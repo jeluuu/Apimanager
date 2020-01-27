@@ -12,62 +12,14 @@
 
 -callback init(Args :: list()) ->
   {'ok', Routes :: list()} | {'ok', Route :: map()} | {'stop', Reason :: term()}.
--callback handle_options(Headers :: map()
-                         ,ReqParams :: map()
-                         ,PathInfo :: 'undefined' | binary()
-                         ,State :: map()) ->
-  'ok' | {'ok', Reply :: map()} | 'error' | {'error', Reason :: map() | atom() }.
--callback handle_get(Headers :: map()
+-callback handle_api(Headers :: map()
                      ,ReqParams :: map()
                      ,PathInfo :: 'undefined' | binary()
                      ,State :: map()) ->
-  'ok' | {'ok', Reply :: map()} | 'error' | {'error', Reason :: map() | atom() }.
--callback handle_head(Headers :: map()
-                     ,ReqParams :: map()
-                     ,PathInfo :: 'undefined' | binary()
-                     ,State :: map()) ->
-  'ok' | {'ok', Reply :: map()} | 'error' | {'error', Reason :: map() | atom() }.
--callback handle_post(Headers :: map()
-                     ,ReqParams :: map()
-                     ,PathInfo :: 'undefined' | binary()
-                     ,State :: map()) ->
-  'ok' | {'ok', Reply :: map()} | 'error' | {'error', Reason :: map() | atom() }.
--callback handle_put(Headers :: map()
-                     ,ReqParams :: map()
-                     ,PathInfo :: 'undefined' | binary()
-                     ,State :: map()) ->
-  'ok' | {'ok', Reply :: map()} | 'error' | {'error', Reason :: map() | atom() }.
--callback handle_delete(Headers :: map()
-                        ,ReqParams :: map()
-                        ,PathInfo :: 'undefined' | binary()
-                        ,State :: map()) ->
-  'ok' | {'ok', Reply :: map()} | 'error' | {'error', Reason :: map() | atom() }.
--callback handle_trace(Headers :: map()
-                        ,ReqParams :: map()
-                        ,PathInfo :: 'undefined' | binary()
-                        ,State :: map()) ->
-  'ok' | {'ok', Reply :: map()} | 'error' | {'error', Reason :: map() | atom() }.
--callback handle_connect(Headers :: map()
-                         ,ReqParams :: map()
-                         ,PathInfo :: 'undefined' | binary()
-                         ,State :: map()) ->
-  'ok' | {'ok', Reply :: map()} | 'error' | {'error', Reason :: map() | atom() }.
--callback handle_patch(Headers :: map()
-                       ,ReqParams :: map()
-                       ,PathInfo :: 'undefined' | binary()
-                       ,State :: map()) ->
   'ok' | {'ok', Reply :: map()} | 'error' | {'error', Reason :: map() | atom() }.
 -callback handle_info(Info :: term()) -> 'ok'.
 
--optional_callbacks([handle_options/4
-                    ,handle_get/4
-                    ,handle_head/4
-                    ,handle_post/4
-                    ,handle_put/4
-                    ,handle_delete/4
-                    ,handle_trace/4
-                    ,handle_connect/4
-                    ,handle_patch/4
+-optional_callbacks([handle_api/4
                     ,handle_info/1]).
 
 %% API
@@ -122,10 +74,10 @@ init([Callback|Arguments]) ->
   process_flag(trap_exit, true),
   case Callback:init(Arguments) of
     {ok, Routes} when is_list(Routes) ->
-      [ publish_route(Route, Callback) || Route <- Routes ],
+      [ publish_route(Route) || Route <- Routes ],
       {ok, #{callback => Callback, init_arguments => Arguments, routes => Routes}};
     {ok, Route} ->
-      publish_route(Route, Callback),
+      publish_route(Route),
       {ok, #{callback => Callback, init_arguments => Arguments, routes => [Route]}};
     Other ->
       Other
@@ -224,13 +176,14 @@ code_change(_OldVsn, State, _Extra) ->
 %%% Internal functions
 %%%===================================================================
 
-publish_route(#{path := Path} = Route, Callback) ->
-  Module = maps:get(module, Route, Callback),
+publish_route(#{path := Path, functions := Functions} = Route) ->
   Init = maps:get(init, Route, []),
   AuthFlag = maps:get(auth, Route, application:get_env(bifrost, auth_default, true)),
   AuthFun = maps:get(auth_fun, Route, application:get_env(auth_fun)),
-  bifrost_web:add_route(Path, ?MODULE
-                        ,#{module => Module, auth => AuthFlag, auth_fun => AuthFun, state => Init}).
+  bifrost_web:add_route(Path, ?MODULE, #{functions => Functions
+                                        ,auth => AuthFlag
+                                        ,auth_fun => AuthFun
+                                        ,state => Init}).
 
 unpublish_route(#{path := Path}) ->
   bifrost_web:remove_route(Path).
@@ -286,11 +239,11 @@ invoke_auth_fun({Module, Function}, Authorization) ->
 invoke_auth_fun(AuthFun, Authorization) when is_function(AuthFun, 1) ->
   apply(AuthFun, [Authorization]).
 
-handle_api(Method, PathInfo, ReqParams, Headers, Req, #{module := Callback, state := State}) ->
-  Function = get_callback_function(Method),
-  case erlang:function_exported(Callback, Function, 4) of
-    true ->
-      case Callback:Function(Headers, ReqParams, PathInfo, State) of
+handle_api(Method, PathInfo, ReqParams, Headers, Req
+           ,#{functions := Functions, state := State}) ->
+  case get_api_function(Method, Functions) of
+    {ok, Function} ->
+      case apply(Function, [Headers, ReqParams, PathInfo, State]) of
         ok ->
           cowboy_req:reply(204, #{}, [], Req);
         {ok, Reply} ->
@@ -307,19 +260,21 @@ handle_api(Method, PathInfo, ReqParams, Headers, Req, #{module := Callback, stat
         {Code, Reply, ReplyHeaders} ->
           cowboy_req:reply(Code, ReplyHeaders, Reply, Req)
       end;
-    false ->
+    error ->
       cowboy_req:reply(405, #{}, [], Req)
   end.
 
-get_callback_function(<<"OPTIONS">>) -> handle_options;
-get_callback_function(<<"GET">>) -> handle_get;
-get_callback_function(<<"HEAD">>) -> handle_head;
-get_callback_function(<<"POST">>) -> handle_post;
-get_callback_function(<<"PUT">>) -> handle_put;
-get_callback_function(<<"DELETE">>) -> handle_delete;
-get_callback_function(<<"TRACE">>) -> handle_trace;
-get_callback_function(<<"CONNECT">>) -> handle_connect;
-get_callback_function(<<"PATCH">>) -> handle_patch.
+get_api_function(Method, Functions) ->
+  MethodAtom = binary_to_atom(string:lowercase(Method), latin1),
+  case maps:find(MethodAtom, Functions) of
+    {ok, {Module, Function}} ->
+      {ok, fun Module:Function/4};
+    {ok, Function} when is_function(Function, 4) ->
+      {ok, Function};
+    Other ->
+      lager:info("Other is ~p", [Other]),
+      error
+  end.
 
 json_decode(JsonObject) ->
   try_atomify_keys(
