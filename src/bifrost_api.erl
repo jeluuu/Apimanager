@@ -255,7 +255,11 @@ handle_api(Method, PathInfo, ReqParams, Headers, Req
         error ->
           cowboy_req:reply(400, #{}, [], Req);
         {error, Reason} ->
-          ReplyJson = json_encode(#{reason => Reason}),
+          ReplyJson = case Reason of
+                        {Key, Value} -> json_encode(#{Key => Value});
+                        Reason when is_map(Reason) -> json_encode(Reason);
+                        _ -> json_encode(#{reason => Reason})
+                      end,
           cowboy_req:reply(400, #{<<"content-type">> => <<"application/json">>}, ReplyJson, Req);
         {Code, Reply, ReplyHeaders} ->
           cowboy_req:reply(Code, ReplyHeaders, Reply, Req)
