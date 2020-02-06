@@ -13,9 +13,9 @@
 -callback init(Args :: list()) ->
   {'ok', Routes :: list()} | {'ok', Route :: map()} | {'stop', Reason :: term()}.
 -callback handle_api(Headers :: map()
-                     ,ReqParams :: map()
-                     ,PathInfo :: 'undefined' | binary()
-                     ,State :: map()) ->
+                    ,ReqParams :: map()
+                    ,PathInfo :: 'undefined' | binary()
+                    ,State :: map()) ->
   'ok' | {'ok', Reply :: map()} | 'error' | {'error', Reason :: map() | atom() }.
 -callback handle_info(Info :: term()) -> 'ok'.
 
