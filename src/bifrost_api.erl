@@ -1,6 +1,6 @@
 %%%-------------------------------------------------------------------
 %%% @author Chaitanya Chalasani
-%%% @copyright (C) 2020, Access Europe GmbH
+%%% @copyright (C) 2020, ArkNode.IO
 %%% @doc
 %%%
 %%% @end
@@ -24,6 +24,7 @@
 
 %% API
 -export([start_link/4
+        ,start_link/3
         ,initialize/1]).
 
 %% gen_server callbacks
@@ -50,6 +51,9 @@
 %%--------------------------------------------------------------------
 start_link(Registration, Callback, Arguments, Options) ->
   gen_server:start_link(Registration, ?MODULE, [Callback|Arguments], Options).
+
+start_link(Callback, Arguments, Options) ->
+  gen_server:start_link(?MODULE, [Callback|Arguments], Options).
 
 initialize(Server) ->
   gen_server:cast(Server, initialize).

@@ -1,6 +1,10 @@
 %%%-------------------------------------------------------------------
-%% @doc bifrost top level supervisor.
-%% @end
+%%% @author Chaitanya Chalasani
+%%% @copyright (C) 2020, ArkNode.IO
+%%% @doc
+%%%
+%%% @end
+%%% Created : 2020-08-06 10:59:59.849545
 %%%-------------------------------------------------------------------
 
 -module(bifrost_sup).
