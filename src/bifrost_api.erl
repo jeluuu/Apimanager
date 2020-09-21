@@ -195,7 +195,9 @@ handle_api(Method, PathInfo, ReqParams, Headers, Req
                       end,
           cowboy_req:reply(400, #{<<"content-type">> => <<"application/json">>}, ReplyJson, Req);
         {Code, Reply, ReplyHeaders} ->
-          cowboy_req:reply(Code, ReplyHeaders, Reply, Req)
+          cowboy_req:reply(Code, ReplyHeaders, Reply, Req);
+        Code when is_integer(Code) ->
+          cowboy_req:reply(Code, #{}, [], Req)
       end;
     error ->
       cowboy_req:reply(405, #{}, [], Req)
