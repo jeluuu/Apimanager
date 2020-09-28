@@ -50,6 +50,7 @@ send(Client, Message) ->
 %%%===================================================================
 
 init([Callback|Arguments]) ->
+  process_flag(trap_exit, true),
   case Callback:init(Arguments) of
     {ok, #{host := Host, port := Port, state := CState} = State} ->
       Resource = maps:get(resource, State, "/"),
@@ -98,7 +99,7 @@ handle_info(ping, #{conn_pid := ConnPid, status := connected} = State) ->
   erlang:send_after(5000, self(), ping),
   gun:ws_send(ConnPid, {text, ""}),
   {noreply, State};
-handle_info({gun_response, ConnPid, _, _, Status, Headers}, #{conn_pid := ConnPid} = State) ->
+handle_info({gun_response, ConnPid, _A, _B, Status, Headers}, #{conn_pid := ConnPid} = State) ->
   gun:close(ConnPid),
   {stop, {upgrade_failed, Status, Headers}, State};
 handle_info({gun_error, ConnPid, StreamRef, Reason}, #{conn_pid := ConnPid} = State) ->

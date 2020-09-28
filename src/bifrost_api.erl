@@ -12,15 +12,9 @@
 
 -callback init(Args :: list()) ->
   {'ok', Routes :: list()} | {'ok', Route :: map()} | {'stop', Reason :: term()}.
--callback handle_api(Headers :: map()
-                    ,ReqParams :: map()
-                    ,PathInfo :: 'undefined' | binary()
-                    ,State :: map()) ->
-  'ok' | {'ok', Reply :: map()} | 'error' | {'error', Reason :: map() | atom() }.
 -callback handle_info(Info :: term()) -> 'ok'.
 
--optional_callbacks([handle_api/4
-                    ,handle_info/1]).
+-optional_callbacks([handle_info/1]).
 
 %% API
 -export([start_link/4
@@ -122,7 +116,7 @@ unpublish_route(#{path := Path}) ->
   bifrost_web:remove_route(Path).
 
 handle_api(#{method := Method, path_info := PathInfo} = Req, State) ->
-  case is_authenticated(Req, State) of
+  case authenticate(Req, State) of
     {ok, HeadersU} ->
       Bindings = cowboy_req:bindings(Req),
       QueryStringMap = try_atomify_keys( maps:from_list( cowboy_req:parse_qs(Req) )),
@@ -145,15 +139,15 @@ handle_api(#{method := Method, path_info := PathInfo} = Req, State) ->
                               end
                           end,
       handle_api(Method, PathInfo, ReqParams, HeadersU, Req1, State);
-    false ->
+    failed ->
       cowboy_req:reply(401, #{}, [], Req)
   end.
 
-is_authenticated(#{headers := Headers}, #{auth := false}) ->
+authenticate(#{headers := Headers}, #{auth := false}) ->
   {ok, Headers};
-is_authenticated(_Req, #{auth_fun := undefined}) ->
-  false;
-is_authenticated(#{headers := Headers} = Req, #{auth_fun := AuthFun}) ->
+authenticate(_Req, #{auth_fun := undefined}) ->
+  failed;
+authenticate(#{headers := Headers} = Req, #{auth_fun := AuthFun}) ->
   Authorization = cowboy_req:parse_header(<<"authorization">>, Req),
   HeadersWithoutAuthorization = maps:remove(<<"authorization">>, Headers),
   case invoke_auth_fun(AuthFun, Authorization) of
@@ -163,8 +157,8 @@ is_authenticated(#{headers := Headers} = Req, #{auth_fun := AuthFun}) ->
       {ok, map:merge(HeadersWithoutAuthorization, AuthIdentities)};
     {ok, AuthIdentities} ->
       {ok, HeadersWithoutAuthorization#{<<"identity">> => AuthIdentities}};
-    false ->
-      false
+    failed ->
+      failed
   end.
 
 invoke_auth_fun({Module, Function}, Authorization) ->
@@ -174,45 +168,44 @@ invoke_auth_fun(AuthFun, Authorization) when is_function(AuthFun, 1) ->
 
 handle_api(Method, PathInfo, ReqParams, Headers, Req
            ,#{functions := Functions, state := State}) ->
-  case get_api_function(Method, Functions) of
-    {ok, Function} ->
-      case apply(Function, [Headers, ReqParams, PathInfo, State]) of
-        ok ->
-          cowboy_req:reply(204, #{}, [], Req);
-        {ok, Reply} ->
-          ReplyJson = json_encode(Reply),
-          cowboy_req:reply(200, #{<<"content-type">> => <<"application/json">>}, ReplyJson, Req);
-        {ok, Reply, ReplyHeaders} ->
-          ReplyJson = json_encode(Reply),
-          cowboy_req:reply(200, ReplyHeaders#{<<"content-type">> => <<"application/json">>}, ReplyJson, Req);
-        error ->
-          cowboy_req:reply(400, #{}, [], Req);
-        {error, Reason} ->
-          ReplyJson = case Reason of
-                        {Key, Value} -> json_encode(#{Key => Value});
-                        Reason when is_map(Reason) -> json_encode(Reason);
-                        _ -> json_encode(#{reason => Reason})
-                      end,
-          cowboy_req:reply(400, #{<<"content-type">> => <<"application/json">>}, ReplyJson, Req);
-        {Code, Reply, ReplyHeaders} ->
-          cowboy_req:reply(Code, ReplyHeaders, Reply, Req);
-        Code when is_integer(Code) ->
-          cowboy_req:reply(Code, #{}, [], Req)
-      end;
+  case invoke_function(Method, Functions, [Headers, ReqParams, PathInfo, State]) of
+    {error, bad_function} ->
+      cowboy_req:reply(405, #{}, [], Req);
+    ok ->
+      cowboy_req:reply(204, #{}, [], Req);
+    {ok, Reply} ->
+      ReplyJson = json_encode(Reply),
+      cowboy_req:reply(200, #{<<"content-type">> => <<"application/json">>}, ReplyJson, Req);
+    {ok, Reply, ReplyHeaders} ->
+      ReplyJson = json_encode(Reply),
+      cowboy_req:reply(200, ReplyHeaders#{<<"content-type">> => <<"application/json">>}, ReplyJson, Req);
     error ->
-      cowboy_req:reply(405, #{}, [], Req)
+      cowboy_req:reply(400, #{}, [], Req);
+    {error, Reason} ->
+      ReplyJson = case Reason of
+                    {Key, Value} -> json_encode(#{Key => Value});
+                    Reason when is_map(Reason) -> json_encode(Reason);
+                    _ -> json_encode(#{reason => Reason})
+                  end,
+      cowboy_req:reply(400, #{<<"content-type">> => <<"application/json">>}, ReplyJson, Req);
+    {Code, Reply, ReplyHeaders} ->
+      cowboy_req:reply(Code, ReplyHeaders, Reply, Req);
+    Code when is_integer(Code) ->
+      cowboy_req:reply(Code, #{}, [], Req)
   end.
 
-get_api_function(Method, Functions) ->
+invoke_function(Method, Functions, ApiArgs) ->
   MethodAtom = binary_to_atom(string:lowercase(Method), latin1),
   case maps:find(MethodAtom, Functions) of
+    {ok, {Module, Function, FunArgs}} ->
+      apply(Module, Function, FunArgs ++ ApiArgs);
     {ok, {Module, Function}} ->
-      {ok, fun Module:Function/4};
+      apply(Module, Function, ApiArgs);
     {ok, Function} when is_function(Function, 4) ->
-      {ok, Function};
+      apply(Function, ApiArgs);
     Other ->
       lager:info("Other is ~p", [Other]),
-      error
+      {error, bad_function}
   end.
 
 json_decode(JsonObject) ->
