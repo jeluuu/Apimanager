@@ -106,10 +106,13 @@ code_change(_OldVsn, State, _Extra) ->
 publish_route(#{path := Path, functions := Functions} = Route) ->
   Init = maps:get(init, Route, []),
   AuthFlag = maps:get(auth, Route, application:get_env(bifrost, auth_default, true)),
-  AuthFun = maps:get(auth_fun, Route, application:get_env(auth_fun)),
+  AuthFun = maps:get(auth_fun, Route, application:get_env(bifrost, auth_fun)),
+  AuthHeaders = maps:get(auth_headers, Route
+                        ,application:get_env(bifrost, auth_headers, [<<"authorization">>])),
   bifrost_web:add_route(Path, ?MODULE, #{functions => Functions
                                         ,auth => AuthFlag
                                         ,auth_fun => AuthFun
+                                        ,auth_headers => AuthHeaders
                                         ,state => Init}).
 
 unpublish_route(#{path := Path}) ->
@@ -149,19 +152,20 @@ authenticate(#{headers := Headers}, #{auth := false}) ->
 authenticate(_Req, #{auth_fun := undefined}) ->
   lager:info("Authentication function not defined so failing"),
   failed;
-authenticate(#{headers := Headers} = Req, #{auth_fun := AuthFun}) ->
-  Authorization = cowboy_req:parse_header(<<"authorization">>, Req),
-  HeadersWithoutAuthorization = maps:remove(<<"authorization">>, Headers),
-  case invoke_auth_fun(AuthFun, Authorization) of
+authenticate(#{headers := Headers} = Req, #{auth_fun := AuthFun} = State) ->
+  AuthHeaders = maps:get(auth_headers, State, [<<"authorization">>]),
+  AuthParams = [ cowboy_req:parse_header(AuthHeader, Req) || AuthHeader <- AuthHeaders ],
+  HeadersWithoutAuthHeaders = maps:without(Headers, AuthHeaders),
+  case invoke_auth_fun(AuthFun, AuthParams) of
     ok ->
       lager:info("Authentication success"),
-      {ok, HeadersWithoutAuthorization};
+      {ok, HeadersWithoutAuthHeaders};
     {ok, AuthIdentities} when is_map(AuthIdentities) ->
       lager:info("Authentication success ~p", [AuthIdentities]),
-      {ok, map:merge(HeadersWithoutAuthorization, AuthIdentities)};
+      {ok, map:merge(HeadersWithoutAuthHeaders, AuthIdentities)};
     {ok, AuthIdentities} ->
       lager:info("Authentication success ~p", [AuthIdentities]),
-      {ok, HeadersWithoutAuthorization#{<<"identity">> => AuthIdentities}};
+      {ok, HeadersWithoutAuthHeaders#{<<"identity">> => AuthIdentities}};
     failed ->
       lager:info("Authentication failed"),
       failed
