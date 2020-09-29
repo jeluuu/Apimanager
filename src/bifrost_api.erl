@@ -144,20 +144,26 @@ handle_api(#{method := Method, path_info := PathInfo} = Req, State) ->
   end.
 
 authenticate(#{headers := Headers}, #{auth := false}) ->
+  lager:info("Authentication disabled"),
   {ok, Headers};
 authenticate(_Req, #{auth_fun := undefined}) ->
+  lager:info("Authentication function not defined so failing"),
   failed;
 authenticate(#{headers := Headers} = Req, #{auth_fun := AuthFun}) ->
   Authorization = cowboy_req:parse_header(<<"authorization">>, Req),
   HeadersWithoutAuthorization = maps:remove(<<"authorization">>, Headers),
   case invoke_auth_fun(AuthFun, Authorization) of
     ok ->
+      lager:info("Authentication success"),
       {ok, HeadersWithoutAuthorization};
     {ok, AuthIdentities} when is_map(AuthIdentities) ->
+      lager:info("Authentication success ~p", [AuthIdentities]),
       {ok, map:merge(HeadersWithoutAuthorization, AuthIdentities)};
     {ok, AuthIdentities} ->
+      lager:info("Authentication success ~p", [AuthIdentities]),
       {ok, HeadersWithoutAuthorization#{<<"identity">> => AuthIdentities}};
     failed ->
+      lager:info("Authentication failed"),
       failed
   end.
 
