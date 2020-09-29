@@ -152,9 +152,10 @@ authenticate(#{headers := Headers}, #{auth := false}) ->
 authenticate(_Req, #{auth_fun := undefined}) ->
   lager:info("Authentication function not defined so failing"),
   failed;
-authenticate(#{headers := Headers} = Req, #{auth_fun := AuthFun} = State) ->
+authenticate(#{headers := Headers}, #{auth_fun := AuthFun} = State) ->
   AuthHeaders = maps:get(auth_headers, State, [<<"authorization">>]),
-  AuthParams = [ cowboy_req:parse_header(AuthHeader, Req) || AuthHeader <- AuthHeaders ],
+  % AuthParams = [ cowboy_req:parse_header(AuthHeader, Req) || AuthHeader <- AuthHeaders ],
+  AuthParams = maps:with(AuthHeaders, Headers),
   HeadersWithoutAuthHeaders = maps:without(Headers, AuthHeaders),
   case invoke_auth_fun(AuthFun, AuthParams) of
     ok ->
