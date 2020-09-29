@@ -156,7 +156,7 @@ authenticate(#{headers := Headers}, #{auth_fun := AuthFun} = State) ->
   AuthHeaders = maps:get(auth_headers, State, [<<"authorization">>]),
   % AuthParams = [ cowboy_req:parse_header(AuthHeader, Req) || AuthHeader <- AuthHeaders ],
   AuthParams = maps:with(AuthHeaders, Headers),
-  HeadersWithoutAuthHeaders = maps:without(Headers, AuthHeaders),
+  HeadersWithoutAuthHeaders = maps:without(AuthHeaders, Headers),
   case invoke_auth_fun(AuthFun, AuthParams) of
     ok ->
       lager:info("Authentication success"),
