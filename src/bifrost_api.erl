@@ -118,8 +118,9 @@ publish_route(#{path := Path, functions := Functions} = Route) ->
 unpublish_route(#{path := Path}) ->
   bifrost_web:remove_route(Path).
 
-handle_api(#{method := Method, path_info := PathInfo} = Req, State) ->
-  case authenticate(Req, State) of
+handle_api(#{method := Method, headers := Headers, path_info := PathInfo} = Req, State) ->
+  lager:info("Handling api ~p", [Req]),
+  case authenticate(Method, Headers, State) of
     {ok, HeadersU} ->
       Bindings = cowboy_req:bindings(Req),
       QueryStringMap = try_atomify_keys( maps:from_list( cowboy_req:parse_qs(Req) )),
@@ -146,15 +147,17 @@ handle_api(#{method := Method, path_info := PathInfo} = Req, State) ->
       cowboy_req:reply(401, #{}, [], Req)
   end.
 
-authenticate(#{headers := Headers}, #{auth := false}) ->
+authenticate(<<"OPTIONS">>, Headers, _State) ->
+  lager:info("Skipping authentication for OPTIONS "),
+  {ok, Headers};
+authenticate(_Method, Headers, #{auth := false}) ->
   lager:info("Authentication disabled"),
   {ok, Headers};
-authenticate(_Req, #{auth_fun := undefined}) ->
+authenticate(_Method, _Headers, #{auth_fun := undefined}) ->
   lager:info("Authentication function not defined so failing"),
   failed;
-authenticate(#{headers := Headers}, #{auth_fun := AuthFun} = State) ->
+authenticate(_Method, Headers, #{auth_fun := AuthFun} = State) ->
   AuthHeaders = maps:get(auth_headers, State, [<<"authorization">>]),
-  % AuthParams = [ cowboy_req:parse_header(AuthHeader, Req) || AuthHeader <- AuthHeaders ],
   AuthParams = maps:with(AuthHeaders, Headers),
   HeadersWithoutAuthHeaders = maps:without(AuthHeaders, Headers),
   case invoke_auth_fun(AuthFun, AuthParams) of
@@ -214,6 +217,13 @@ invoke_function(Method, Functions, ApiArgs) ->
       apply(Module, Function, ApiArgs);
     {ok, Function} when is_function(Function, 4) ->
       apply(Function, ApiArgs);
+    Other when MethodAtom == options ->
+      case application:get_env(bifrost, cors, true) of
+        true ->
+          handle_options(hd(ApiArgs));
+        false ->
+          lager:info("Cors is turned off and options fun not defined ~p", [Other])
+      end;
     Other ->
       lager:info("Other is ~p", [Other]),
       {error, bad_function}
@@ -257,4 +267,14 @@ format_values(Map) when is_map(Map) ->
 format_values(undefined) -> null;
 format_values(Value) when is_reference(Value) -> list_to_binary(ref_to_list(Value));
 format_values(Value) -> Value.
+
+handle_options(Headers) ->
+  CorsHeaders = maps:get(<<"access-control-request-headers">>, Headers, <<"*">>),
+  CorsMethod = maps:get(<<"access-control-request-method">>, Headers, <<"GET">>),
+  ReplyHeaders =  #{<<"content-type">> => <<"application/json;charset=utf-8">>,
+                    <<"Access-Control-Allow-Headers">> => CorsHeaders,
+                    <<"Access-Control-Allow-Methods">> => <<CorsMethod/binary, ",OPTIONS">>,
+                    <<"Access-Control-Max-Age">> => <<"1728000">>},
+  lager:info("Sending CORS headers ~p", [ReplyHeaders]),
+  {204, [], ReplyHeaders}.
 
