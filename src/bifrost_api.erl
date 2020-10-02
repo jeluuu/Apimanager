@@ -185,28 +185,34 @@ handle_api(Method, PathInfo, ReqParams, Headers, Cookies, Req
   Origin = maps:get(<<"origin">>, Headers, <<"*">>),
   case invoke_function(Method, Functions, ApiArgs) of
     {error, bad_function} ->
-      cowboy_req:reply(405, #{<<"Access-Control-Allow-Origin">> => Origin}, [], Req);
+      cowboy_req:reply(405, #{<<"Access-Control-Allow-Origin">> => Origin
+                             ,<<"Access-Control-Allow-Credentials">> => "true"}, [], Req);
     ok ->
-      cowboy_req:reply(204, #{<<"Access-Control-Allow-Origin">> => Origin}, [], Req);
+      cowboy_req:reply(204, #{<<"Access-Control-Allow-Origin">> => Origin
+                             ,<<"Access-Control-Allow-Credentials">> => "true"}, [], Req);
     {ok, Reply} when is_map(Reply) ->
       ReplyJson = json_encode(Reply),
       cowboy_req:reply(200, #{<<"Access-Control-Allow-Origin">> => Origin
-                             ,<<"content-type">> => <<"application/json">>}
+                             ,<<"content-type">> => <<"application/json">>
+                             ,<<"Access-Control-Allow-Credentials">> => "true"}
                       ,ReplyJson, Req);
     {ok, Reply, ReplyHeaders} when is_map(Reply), is_map(ReplyHeaders) ->
       ReplyJson = json_encode(Reply),
       cowboy_req:reply(200, ReplyHeaders#{<<"Access-Control-Allow-Origin">> => Origin
-                                         ,<<"content-type">> => <<"application/json">>}
+                                         ,<<"content-type">> => <<"application/json">>
+                                         ,<<"Access-Control-Allow-Credentials">> => "true"}
                        ,ReplyJson, Req);
     {ok, Reply, ReplyHeaders, RespCookies}
       when is_map(Reply), is_map(ReplyHeaders), is_list(RespCookies) ->
       ReqU = set_cookies(RespCookies, Req),
       ReplyJson = json_encode(Reply),
       cowboy_req:reply(200, ReplyHeaders#{<<"Access-Control-Allow-Origin">> => Origin
-                                         ,<<"content-type">> => <<"application/json">>}
+                                         ,<<"content-type">> => <<"application/json">>
+                                         ,<<"Access-Control-Allow-Credentials">> => "true"}
                        ,ReplyJson, ReqU);
     error ->
-      cowboy_req:reply(400, #{<<"Access-Control-Allow-Origin">> => Origin}, [], Req);
+      cowboy_req:reply(400, #{<<"Access-Control-Allow-Origin">> => Origin
+                             ,<<"Access-Control-Allow-Credentials">> => "true"}, [], Req);
     {error, Reason} ->
       ReplyJson = case Reason of
                     {Key, Value} -> json_encode(#{Key => Value});
@@ -214,14 +220,20 @@ handle_api(Method, PathInfo, ReqParams, Headers, Cookies, Req
                     _ -> json_encode(#{reason => Reason})
                   end,
       cowboy_req:reply(400, #{<<"Access-Control-Allow-Origin">> => Origin
-                             ,<<"content-type">> => <<"application/json">>}, ReplyJson, Req);
+                             ,<<"content-type">> => <<"application/json">>
+                             ,<<"Access-Control-Allow-Credentials">> => "true"}, ReplyJson, Req);
     {Code, Reply, ReplyHeaders} ->
-      cowboy_req:reply(Code, ReplyHeaders#{<<"Access-Control-Allow-Origin">> => Origin}, Reply, Req);
+      cowboy_req:reply(Code, ReplyHeaders#{<<"Access-Control-Allow-Origin">> => Origin
+                                          ,<<"Access-Control-Allow-Credentials">> => "true"}
+                       ,Reply, Req);
     {Code, Reply, ReplyHeaders, RespCookies} when is_list(RespCookies)->
       ReqU = set_cookies(RespCookies, Req),
-      cowboy_req:reply(Code, ReplyHeaders#{<<"Access-Control-Allow-Origin">> => Origin}, Reply, ReqU);
+      cowboy_req:reply(Code, ReplyHeaders#{<<"Access-Control-Allow-Origin">> => Origin
+                                          ,<<"Access-Control-Allow-Credentials">> => "true"}
+                       ,Reply, ReqU);
     Code when is_integer(Code) ->
-      cowboy_req:reply(Code, #{<<"Access-Control-Allow-Origin">> => Origin}, [], Req)
+      cowboy_req:reply(Code, #{<<"Access-Control-Allow-Origin">> => Origin
+                              ,<<"Access-Control-Allow-Credentials">> => "true"}, [], Req)
   end.
 
 set_cookies(Cookies, Req) ->
@@ -310,8 +322,8 @@ handle_options(#{headers := Headers}) ->
                     % <<"Access-Control-Allow-Origin">> => Origin,
                     <<"Access-Control-Allow-Headers">> => CorsHeaders,
                     <<"Access-Control-Allow-Methods">> => <<CorsMethod/binary, ",OPTIONS">>,
-                    <<"Access-Control-Max-Age">> => <<"1728000">>,
-                    <<"Access-Control-Allow-Credentials">> => "true"},
+                    <<"Access-Control-Max-Age">> => <<"1728000">>},
+                    % <<"Access-Control-Allow-Credentials">> => "true"},
   lager:info("Sending CORS headers ~p", [ReplyHeaders]),
   {204, [], ReplyHeaders}.
 
