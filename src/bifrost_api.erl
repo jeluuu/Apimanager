@@ -117,7 +117,7 @@ unpublish_route(#{path := Path}) ->
 
 handle_api(#{method := Method, headers := Headers, path_info := PathInfo} = Req, State) ->
   lager:info("Handling api ~p", [Req]),
-  Cookies = cowboy_req:parse_cookies(Req),
+  Cookies = maps:from_list( cowboy_req:parse_cookies(Req) ),
   lager:info("Cookies are ~p", [Cookies]),
   ReqU = Req#{cookies => Cookies},
   case authenticate(ReqU, State) of
