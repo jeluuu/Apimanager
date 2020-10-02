@@ -296,9 +296,11 @@ format_values(Value) when is_reference(Value) -> list_to_binary(ref_to_list(Valu
 format_values(Value) -> Value.
 
 handle_options(Headers) ->
+  Origin = maps:get(<<"origin">>, Headers, <<"*">>),
   CorsHeaders = maps:get(<<"access-control-request-headers">>, Headers, <<"*">>),
   CorsMethod = maps:get(<<"access-control-request-method">>, Headers, <<"GET">>),
   ReplyHeaders =  #{<<"content-type">> => <<"application/json;charset=utf-8">>,
+                    <<"Access-Control-Allow-Origin">> => Origin,
                     <<"Access-Control-Allow-Headers">> => CorsHeaders,
                     <<"Access-Control-Allow-Methods">> => <<CorsMethod/binary, ",OPTIONS">>,
                     <<"Access-Control-Max-Age">> => <<"1728000">>,
