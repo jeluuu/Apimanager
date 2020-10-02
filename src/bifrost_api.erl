@@ -296,6 +296,7 @@ format_values(Value) when is_reference(Value) -> list_to_binary(ref_to_list(Valu
 format_values(Value) -> Value.
 
 handle_options(Headers) ->
+  lager:info("Headers for options ~p", [Headers]),
   Origin = maps:get(<<"origin">>, Headers, <<"*">>),
   CorsHeaders = maps:get(<<"access-control-request-headers">>, Headers, <<"*">>),
   CorsMethod = maps:get(<<"access-control-request-method">>, Headers, <<"GET">>),
