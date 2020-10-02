@@ -119,8 +119,8 @@ handle_api(#{method := Method, headers := Headers, path_info := PathInfo} = Req,
   lager:info("Handling api ~p", [Req]),
   Cookies = maps:from_list( cowboy_req:parse_cookies(Req) ),
   lager:info("Cookies are ~p", [Cookies]),
-  ReqU = Req#{cookies => Cookies},
-  case authenticate(ReqU, State) of
+  ReqAuth = Req#{cookies => Cookies},
+  case authenticate(ReqAuth, State) of
     {ok, IdentitiesMap} ->
       Bindings = cowboy_req:bindings(Req),
       QueryStringMap = maps:from_list( cowboy_req:parse_qs(Req) ),
