@@ -301,7 +301,8 @@ handle_options(Headers) ->
   ReplyHeaders =  #{<<"content-type">> => <<"application/json;charset=utf-8">>,
                     <<"Access-Control-Allow-Headers">> => CorsHeaders,
                     <<"Access-Control-Allow-Methods">> => <<CorsMethod/binary, ",OPTIONS">>,
-                    <<"Access-Control-Max-Age">> => <<"1728000">>},
+                    <<"Access-Control-Max-Age">> => <<"1728000">>,
+                    <<"Access-Control-Allow-Crednetials">> => true},
   lager:info("Sending CORS headers ~p", [ReplyHeaders]),
   {204, [], ReplyHeaders}.
 
