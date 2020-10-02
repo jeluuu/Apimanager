@@ -298,11 +298,11 @@ format_values(Value) -> Value.
 handle_options(#{headers := Headers}) ->
   lager:info("Headers for options ~p", [Headers]),
   Origin = maps:get(<<"origin">>, Headers, <<"*">>),
-  % CorsHeaders = maps:get(<<"access-control-request-headers">>, Headers, <<"*">>),
+  CorsHeaders = maps:get(<<"access-control-request-headers">>, Headers, <<"*">>),
   CorsMethod = maps:get(<<"access-control-request-method">>, Headers, <<"GET">>),
   ReplyHeaders =  #{<<"content-type">> => <<"application/json;charset=utf-8">>,
                     <<"Access-Control-Allow-Origin">> => Origin,
-                    % <<"Access-Control-Allow-Headers">> => CorsHeaders,
+                    <<"Access-Control-Allow-Headers">> => CorsHeaders,
                     <<"Access-Control-Allow-Methods">> => <<CorsMethod/binary, ",OPTIONS">>,
                     <<"Access-Control-Max-Age">> => <<"1728000">>,
                     <<"Access-Control-Allow-Credentials">> => "true"},
