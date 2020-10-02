@@ -182,40 +182,46 @@ handle_api(Method, PathInfo, ReqParams, Headers, Cookies, Req
            ,#{functions := Functions, state := State}) ->
   ApiArgs = #{headers => Headers, cookies => Cookies
              ,request => ReqParams, path => PathInfo, state => State},
+  Origin = maps:get(<<"origin">>, Headers, <<"*">>),
   case invoke_function(Method, Functions, ApiArgs) of
     {error, bad_function} ->
-      cowboy_req:reply(405, #{}, [], Req);
+      cowboy_req:reply(405, #{<<"Access-Control-Allow-Origin">> => Origin}, [], Req);
     ok ->
-      cowboy_req:reply(204, #{}, [], Req);
+      cowboy_req:reply(204, #{<<"Access-Control-Allow-Origin">> => Origin}, [], Req);
     {ok, Reply} when is_map(Reply) ->
       ReplyJson = json_encode(Reply),
-      cowboy_req:reply(200, #{<<"content-type">> => <<"application/json">>}, ReplyJson, Req);
+      cowboy_req:reply(200, #{<<"Access-Control-Allow-Origin">> => Origin
+                             ,<<"content-type">> => <<"application/json">>}
+                      ,ReplyJson, Req);
     {ok, Reply, ReplyHeaders} when is_map(Reply), is_map(ReplyHeaders) ->
       ReplyJson = json_encode(Reply),
-      cowboy_req:reply(200, ReplyHeaders#{<<"content-type">> => <<"application/json">>}
+      cowboy_req:reply(200, ReplyHeaders#{<<"Access-Control-Allow-Origin">> => Origin
+                                         ,<<"content-type">> => <<"application/json">>}
                        ,ReplyJson, Req);
     {ok, Reply, ReplyHeaders, RespCookies}
       when is_map(Reply), is_map(ReplyHeaders), is_list(RespCookies) ->
       ReqU = set_cookies(RespCookies, Req),
       ReplyJson = json_encode(Reply),
-      cowboy_req:reply(200, ReplyHeaders#{<<"content-type">> => <<"application/json">>}
+      cowboy_req:reply(200, ReplyHeaders#{<<"Access-Control-Allow-Origin">> => Origin
+                                         ,<<"content-type">> => <<"application/json">>}
                        ,ReplyJson, ReqU);
     error ->
-      cowboy_req:reply(400, #{}, [], Req);
+      cowboy_req:reply(400, #{<<"Access-Control-Allow-Origin">> => Origin}, [], Req);
     {error, Reason} ->
       ReplyJson = case Reason of
                     {Key, Value} -> json_encode(#{Key => Value});
                     Reason when is_map(Reason) -> json_encode(Reason);
                     _ -> json_encode(#{reason => Reason})
                   end,
-      cowboy_req:reply(400, #{<<"content-type">> => <<"application/json">>}, ReplyJson, Req);
+      cowboy_req:reply(400, #{<<"Access-Control-Allow-Origin">> => Origin
+                             ,<<"content-type">> => <<"application/json">>}, ReplyJson, Req);
     {Code, Reply, ReplyHeaders} ->
-      cowboy_req:reply(Code, ReplyHeaders, Reply, Req);
+      cowboy_req:reply(Code, ReplyHeaders#{<<"Access-Control-Allow-Origin">> => Origin}, Reply, Req);
     {Code, Reply, ReplyHeaders, RespCookies} when is_list(RespCookies)->
       ReqU = set_cookies(RespCookies, Req),
-      cowboy_req:reply(Code, ReplyHeaders, Reply, ReqU);
+      cowboy_req:reply(Code, ReplyHeaders#{<<"Access-Control-Allow-Origin">> => Origin}, Reply, ReqU);
     Code when is_integer(Code) ->
-      cowboy_req:reply(Code, #{}, [], Req)
+      cowboy_req:reply(Code, #{<<"Access-Control-Allow-Origin">> => Origin}, [], Req)
   end.
 
 set_cookies(Cookies, Req) ->
@@ -297,11 +303,11 @@ format_values(Value) -> Value.
 
 handle_options(#{headers := Headers}) ->
   lager:info("Headers for options ~p", [Headers]),
-  Origin = maps:get(<<"origin">>, Headers, <<"*">>),
+  % Origin = maps:get(<<"origin">>, Headers, <<"*">>),
   CorsHeaders = maps:get(<<"access-control-request-headers">>, Headers, <<"*">>),
   CorsMethod = maps:get(<<"access-control-request-method">>, Headers, <<"GET">>),
   ReplyHeaders =  #{<<"content-type">> => <<"application/json;charset=utf-8">>,
-                    <<"Access-Control-Allow-Origin">> => Origin,
+                    % <<"Access-Control-Allow-Origin">> => Origin,
                     <<"Access-Control-Allow-Headers">> => CorsHeaders,
                     <<"Access-Control-Allow-Methods">> => <<CorsMethod/binary, ",OPTIONS">>,
                     <<"Access-Control-Max-Age">> => <<"1728000">>,
