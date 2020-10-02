@@ -107,12 +107,9 @@ publish_route(#{path := Path, functions := Functions} = Route) ->
   Init = maps:get(init, Route, []),
   AuthFlag = maps:get(auth, Route, application:get_env(bifrost, auth_default, true)),
   AuthFun = maps:get(auth_fun, Route, application:get_env(bifrost, auth_fun)),
-  AuthHeaders = maps:get(auth_headers, Route
-                        ,application:get_env(bifrost, auth_headers, [<<"authorization">>])),
   bifrost_web:add_route(Path, ?MODULE, #{functions => Functions
                                         ,auth => AuthFlag
                                         ,auth_fun => AuthFun
-                                        ,auth_headers => AuthHeaders
                                         ,state => Init}).
 
 unpublish_route(#{path := Path}) ->
@@ -120,79 +117,89 @@ unpublish_route(#{path := Path}) ->
 
 handle_api(#{method := Method, headers := Headers, path_info := PathInfo} = Req, State) ->
   lager:info("Handling api ~p", [Req]),
-  case authenticate(Method, Headers, State) of
-    {ok, HeadersU} ->
+  Cookies = cowboy_req:parse_cookies(Req),
+  lager:info("Cookies are ~p", [Cookies]),
+  ReqU = Req#{cookies => Cookies},
+  case authenticate(ReqU, State) of
+    {ok, IdentitiesMap} ->
       Bindings = cowboy_req:bindings(Req),
-      QueryStringMap = try_atomify_keys( maps:from_list( cowboy_req:parse_qs(Req) )),
-      QueryWithBindings = maps:merge(QueryStringMap, Bindings),
+      QueryStringMap = maps:from_list( cowboy_req:parse_qs(Req) ),
+      ParamsAll = maps:merge(maps:merge(QueryStringMap, Bindings), IdentitiesMap),
       {ReqParams, Req1} = case maps:get(has_body, Req) of
                             false ->
-                              { QueryWithBindings, Req };
+                              { ParamsAll, Req };
                             true ->
                               {ok, HttpBodyJson, ReqU} = cowboy_req:read_body(Req),
                               case catch json_decode(HttpBodyJson) of
                                 {'EXIT', Reason} ->
                                   lager:error("Body decode failed ~p", [Reason]),
-                                  { QueryWithBindings, ReqU };
+                                  { ParamsAll, ReqU };
                                 HttpBodyList when is_list(HttpBodyList) ->
                                   lager:info("Body is list ~p", [HttpBodyList]),
-                                  { QueryWithBindings#{<<"_body">> => HttpBodyList}, ReqU };
+                                  { ParamsAll#{<<"_body">> => HttpBodyList}, ReqU };
                                 HttpBodyMap ->
                                   lager:info("Body is map ~p", [HttpBodyMap]),
-                                  { maps:merge(HttpBodyMap, QueryWithBindings), ReqU }
+                                  { maps:merge(HttpBodyMap, ParamsAll), ReqU }
                               end
                           end,
-      handle_api(Method, PathInfo, ReqParams, HeadersU, Req1, State);
+      ReqParamsAtomized = try_atomify_keys(ReqParams),
+      handle_api(Method, PathInfo, ReqParamsAtomized, Headers, Cookies, Req1, State);
     failed ->
       cowboy_req:reply(401, #{}, [], Req)
   end.
 
-authenticate(<<"OPTIONS">>, Headers, _State) ->
+authenticate(#{method := <<"OPTIONS">>}, _State) ->
   lager:info("Skipping authentication for OPTIONS "),
-  {ok, Headers};
-authenticate(_Method, Headers, #{auth := false}) ->
+  {ok, #{}};
+authenticate(_Req, #{auth := false}) ->
   lager:info("Authentication disabled"),
-  {ok, Headers};
-authenticate(_Method, _Headers, #{auth_fun := undefined}) ->
+  {ok, #{}};
+authenticate(_Req, #{auth_fun := undefined}) ->
   lager:info("Authentication function not defined so failing"),
   failed;
-authenticate(_Method, Headers, #{auth_fun := AuthFun} = State) ->
-  AuthHeaders = maps:get(auth_headers, State, [<<"authorization">>]),
-  AuthParams = maps:with(AuthHeaders, Headers),
-  HeadersWithoutAuthHeaders = maps:without(AuthHeaders, Headers),
-  case invoke_auth_fun(AuthFun, AuthParams) of
+authenticate(Req, #{auth_fun := AuthFun}) ->
+  case invoke_auth_fun(AuthFun, Req) of
     ok ->
       lager:info("Authentication success"),
-      {ok, HeadersWithoutAuthHeaders};
+      {ok, #{}};
     {ok, AuthIdentities} when is_map(AuthIdentities) ->
       lager:info("Authentication success ~p", [AuthIdentities]),
-      {ok, map:merge(HeadersWithoutAuthHeaders, AuthIdentities)};
+      {ok, AuthIdentities};
     {ok, AuthIdentities} ->
       lager:info("Authentication success ~p", [AuthIdentities]),
-      {ok, HeadersWithoutAuthHeaders#{<<"identity">> => AuthIdentities}};
+      {ok, #{<<"identity">> => AuthIdentities}};
     failed ->
       lager:info("Authentication failed"),
       failed
   end.
 
-invoke_auth_fun({Module, Function}, Authorization) ->
-  apply(Module, Function, [Authorization]);
-invoke_auth_fun(AuthFun, Authorization) when is_function(AuthFun, 1) ->
-  apply(AuthFun, [Authorization]).
+invoke_auth_fun({Module, Function}, Req) ->
+  apply(Module, Function, [Req]);
+invoke_auth_fun(AuthFun, Req) when is_function(AuthFun, 1) ->
+  apply(AuthFun, [Req]).
 
-handle_api(Method, PathInfo, ReqParams, Headers, Req
+handle_api(Method, PathInfo, ReqParams, Headers, Cookies, Req
            ,#{functions := Functions, state := State}) ->
-  case invoke_function(Method, Functions, [Headers, ReqParams, PathInfo, State]) of
+  ApiArgs = #{headers => Headers, cookies => Cookies
+             ,request => ReqParams, path => PathInfo, state => State},
+  case invoke_function(Method, Functions, ApiArgs) of
     {error, bad_function} ->
       cowboy_req:reply(405, #{}, [], Req);
     ok ->
       cowboy_req:reply(204, #{}, [], Req);
-    {ok, Reply} ->
+    {ok, Reply} when is_map(Reply) ->
       ReplyJson = json_encode(Reply),
       cowboy_req:reply(200, #{<<"content-type">> => <<"application/json">>}, ReplyJson, Req);
-    {ok, Reply, ReplyHeaders} ->
+    {ok, Reply, ReplyHeaders} when is_map(Reply), is_map(ReplyHeaders) ->
       ReplyJson = json_encode(Reply),
-      cowboy_req:reply(200, ReplyHeaders#{<<"content-type">> => <<"application/json">>}, ReplyJson, Req);
+      cowboy_req:reply(200, ReplyHeaders#{<<"content-type">> => <<"application/json">>}
+                       ,ReplyJson, Req);
+    {ok, Reply, ReplyHeaders, RespCookies}
+      when is_map(Reply), is_map(ReplyHeaders), is_list(RespCookies) ->
+      ReqU = set_cookies(RespCookies, Req),
+      ReplyJson = json_encode(Reply),
+      cowboy_req:reply(200, ReplyHeaders#{<<"content-type">> => <<"application/json">>}
+                       ,ReplyJson, ReqU);
     error ->
       cowboy_req:reply(400, #{}, [], Req);
     {error, Reason} ->
@@ -204,23 +211,43 @@ handle_api(Method, PathInfo, ReqParams, Headers, Req
       cowboy_req:reply(400, #{<<"content-type">> => <<"application/json">>}, ReplyJson, Req);
     {Code, Reply, ReplyHeaders} ->
       cowboy_req:reply(Code, ReplyHeaders, Reply, Req);
+    {Code, Reply, ReplyHeaders, RespCookies} when is_list(RespCookies)->
+      ReqU = set_cookies(RespCookies, Req),
+      cowboy_req:reply(Code, ReplyHeaders, Reply, ReqU);
     Code when is_integer(Code) ->
       cowboy_req:reply(Code, #{}, [], Req)
   end.
+
+set_cookies(Cookies, Req) ->
+  lists:foldl(
+    fun({Name, Value}, ReqA) when is_binary(Name), is_binary(Value) ->
+        cowboy_req:set_resp_cookie(Name, Value, ReqA);
+       ({Name, Value, Options}, ReqA) when is_binary(Name), is_binary(Value), is_map(Options) ->
+        cowboy_req:set_resp_cookie(Name, Value, ReqA, Options);
+       (_, ReqA) -> ReqA
+    end,
+    Req,
+    Cookies
+   ).
 
 invoke_function(Method, Functions, ApiArgs) ->
   MethodAtom = binary_to_atom(string:lowercase(Method), latin1),
   case maps:find(MethodAtom, Functions) of
     {ok, {Module, Function, FunArgs}} ->
-      apply(Module, Function, FunArgs ++ ApiArgs);
+      AllArgs = FunArgs ++ [ApiArgs],
+      lager:info("Invoking ~p with ~p", [{Module, Function}, AllArgs]),
+      apply(Module, Function, AllArgs);
     {ok, {Module, Function}} ->
-      apply(Module, Function, ApiArgs);
+      lager:info("Invoking ~p with ~p", [{Module, Function}, ApiArgs]),
+      apply(Module, Function, [ApiArgs]);
     {ok, Function} when is_function(Function, 4) ->
-      apply(Function, ApiArgs);
+      lager:info("Invoking ~p with ~p", [Function, ApiArgs]),
+      apply(Function, [ApiArgs]);
     Other when MethodAtom == options ->
       case application:get_env(bifrost, cors, true) of
         true ->
-          handle_options(hd(ApiArgs));
+          lager:info("Invoking options for cors headers"),
+          handle_options(ApiArgs);
         false ->
           lager:info("Cors is turned off and options fun not defined ~p", [Other])
       end;
