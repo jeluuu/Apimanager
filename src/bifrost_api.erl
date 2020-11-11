@@ -190,20 +190,20 @@ handle_api(Method, PathInfo, ReqParams, Headers, Cookies, Req
     ok ->
       cowboy_req:reply(204, #{<<"Access-Control-Allow-Origin">> => Origin
                              ,<<"Access-Control-Allow-Credentials">> => "true"}, [], Req);
-    {ok, Reply} when is_map(Reply) ->
+    {ok, Reply} ->
       ReplyJson = json_encode(Reply),
       cowboy_req:reply(200, #{<<"Access-Control-Allow-Origin">> => Origin
                              ,<<"content-type">> => <<"application/json">>
                              ,<<"Access-Control-Allow-Credentials">> => "true"}
                       ,ReplyJson, Req);
-    {ok, Reply, ReplyHeaders} when is_map(Reply), is_map(ReplyHeaders) ->
+    {ok, Reply, ReplyHeaders} when is_map(ReplyHeaders) ->
       ReplyJson = json_encode(Reply),
       cowboy_req:reply(200, ReplyHeaders#{<<"Access-Control-Allow-Origin">> => Origin
                                          ,<<"content-type">> => <<"application/json">>
                                          ,<<"Access-Control-Allow-Credentials">> => "true"}
                        ,ReplyJson, Req);
     {ok, Reply, ReplyHeaders, RespCookies}
-      when is_map(Reply), is_map(ReplyHeaders), is_list(RespCookies) ->
+      when is_map(ReplyHeaders), is_list(RespCookies) ->
       ReqU = set_cookies(RespCookies, Req),
       ReplyJson = json_encode(Reply),
       cowboy_req:reply(200, ReplyHeaders#{<<"Access-Control-Allow-Origin">> => Origin
