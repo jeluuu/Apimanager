@@ -120,6 +120,7 @@ handle_api(#{method := Method, headers := Headers, path_info := PathInfo} = Req,
   Cookies = maps:from_list( cowboy_req:parse_cookies(Req) ),
   lager:info("Cookies are ~p", [Cookies]),
   ReqAuth = Req#{cookies => Cookies},
+  Origin = maps:get(<<"origin">>, Headers, <<"*">>),
   case authenticate(ReqAuth, State) of
     {ok, IdentitiesMap} ->
       Bindings = cowboy_req:bindings(Req),
@@ -145,7 +146,8 @@ handle_api(#{method := Method, headers := Headers, path_info := PathInfo} = Req,
       ReqParamsAtomized = try_atomify_keys(ReqParams),
       handle_api(Method, PathInfo, ReqParamsAtomized, Headers, Cookies, Req1, State);
     failed ->
-      cowboy_req:reply(401, #{}, [], Req)
+      cowboy_req:reply(401, #{<<"Access-Control-Allow-Origin">> => Origin
+                             ,<<"Access-Control-Allow-Credentials">> => "true"}, [], Req)
   end.
 
 authenticate(#{method := <<"OPTIONS">>}, _State) ->
