@@ -182,7 +182,7 @@ invoke_auth_fun(AuthFun, Req) when is_function(AuthFun, 1) ->
 
 handle_api(Method, PathInfo, ReqParams, Headers, Cookies, Req
            ,#{functions := Functions, state := State}) ->
-  ApiArgs = #{headers => Headers, cookies => Cookies
+  ApiArgs = #{headers => Headers, cookies => Cookies, method => Method
              ,request => ReqParams, path => PathInfo, state => State},
   Origin = maps:get(<<"origin">>, Headers, <<"*">>),
   case invoke_function(Method, Functions, ApiArgs) of
