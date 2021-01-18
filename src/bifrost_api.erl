@@ -224,6 +224,11 @@ handle_api(Method, PathInfo, ReqParams, Headers, Cookies, Req
       cowboy_req:reply(400, #{<<"Access-Control-Allow-Origin">> => Origin
                              ,<<"content-type">> => <<"application/json">>
                              ,<<"Access-Control-Allow-Credentials">> => "true"}, ReplyJson, Req);
+    {Code, Reply, ReplyHeaders} when is_map(Reply) ->
+      ReplyJson = json_encode(Reply),
+      cowboy_req:reply(Code, ReplyHeaders#{<<"Access-Control-Allow-Origin">> => Origin
+                                          ,<<"Access-Control-Allow-Credentials">> => "true"}
+                       ,ReplyJson, Req);
     {Code, Reply, ReplyHeaders} ->
       cowboy_req:reply(Code, ReplyHeaders#{<<"Access-Control-Allow-Origin">> => Origin
                                           ,<<"Access-Control-Allow-Credentials">> => "true"}
