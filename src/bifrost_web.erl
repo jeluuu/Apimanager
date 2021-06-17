@@ -66,7 +66,8 @@ init([]) ->
                {ok, Port} -> [{port, Port}]
              end,
   {ok, _} = cowboy:start_clear(bifrost, PortSpec,
-                               #{env => #{dispatch => {persistent_term, bifrost_dispatch}}}),
+                               #{env => #{dispatch => {persistent_term, bifrost_dispatch}}
+                                ,middlewares => [cowboy_router, bifrost_middleware, cowboy_handler]}),
   PortFromRanch = ranch:get_port(bifrost),
   lager:info("Bifrost opened on port : ~p", [{PortFromRanch}]),
   {ok, []}.
