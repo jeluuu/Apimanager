@@ -175,7 +175,8 @@ get_routes(DynamicRoutes) ->
                               lists:keysort(1, DynamicRoutes)
                              ),
   [{"/", cowboy_static, IndexFileSpec},
-   {"/sock", bifrost_sock, []} ]
+   {"/sock", bifrost_sock, []},
+   {"/bulk", bifrost_bulk, []}]
   ++ DynamicRoutesAligned
   ++ [{"/[...]", cowboy_static, StaticDirSpec}].
 
