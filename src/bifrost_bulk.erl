@@ -87,7 +87,7 @@ invoke_auth_fun({Module, Function}, Req) ->
 invoke_auth_fun(AuthFun, Req) when is_function(AuthFun, 1) ->
   apply(AuthFun, [Req]).
 
-handle_api(_, _, _, _, _) -> ok.
+handle_api(ReqParams, Host, Headers, Cookies, Req) ->
 
 json_decode(JsonObject) ->
   try_atomify_keys(
