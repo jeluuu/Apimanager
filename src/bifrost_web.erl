@@ -13,6 +13,7 @@
 %% API
 -export([start_link/0
         ,add_route/3
+        ,get_routes/0
         ,remove_route/1]).
 
 %% gen_server callbacks
@@ -40,6 +41,9 @@ start_link() ->
 add_route(Path, Module, Init) ->
   gen_server:cast(?MODULE, {add_route, Path, Module, Init}).
 
+get_routes() ->
+  gen_server:call(?MODULE, get_routes).
+
 remove_route(Path) ->
   gen_server:cast(?MODULE, {remove_route, Path}).
 
@@ -59,7 +63,7 @@ remove_route(Path) ->
 %% @end
 %%--------------------------------------------------------------------
 init([]) ->
-  Routes = get_routes(),
+  Routes = routes(),
   apply_dispatch(Routes),
   PortSpec = case application:get_env(port) of
                undefined -> [];
@@ -86,6 +90,9 @@ init([]) ->
 %%                                   {stop, Reason, State}
 %% @end
 %%--------------------------------------------------------------------
+handle_call(get_routes, _From, State) ->
+  Reply = State,
+  {reply, Reply, State};
 handle_call(_Request, _From, State) ->
   Reply = ok,
   {reply, Reply, State}.
@@ -102,12 +109,12 @@ handle_call(_Request, _From, State) ->
 %%--------------------------------------------------------------------
 handle_cast({add_route, Path, Module, Init}, DynamicRoutes) ->
   DynamicRoutesUpdate = lists:keystore(Path, 1, DynamicRoutes, {Path, Module, Init}),
-  Routes = get_routes(DynamicRoutesUpdate),
+  Routes = routes(DynamicRoutesUpdate),
   apply_dispatch(Routes),
   {noreply, DynamicRoutesUpdate};
 handle_cast({remove_route, Path}, DynamicRoutes) ->
   DynamicRoutesUpdate = lists:keydelete(Path, 1, DynamicRoutes),
-  Routes = get_routes(DynamicRoutesUpdate),
+  Routes = routes(DynamicRoutesUpdate),
   apply_dispatch(Routes),
   {noreply, DynamicRoutesUpdate};
 handle_cast(_Msg, State) ->
@@ -155,10 +162,10 @@ code_change(_OldVsn, State, _Extra) ->
 %%% Internal functions
 %%%===================================================================
 
-get_routes() ->
-  get_routes([]).
+routes() ->
+  routes([]).
 
-get_routes(DynamicRoutes) ->
+routes(DynamicRoutes) ->
   IndexFileSpec = case application:get_env(index_file_path) of
                     undefined ->
                       {priv_file, bifrost, "index.html"};
