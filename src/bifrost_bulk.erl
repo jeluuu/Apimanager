@@ -87,7 +87,8 @@ invoke_auth_fun(AuthFun, Req) when is_function(AuthFun, 1) ->
 handle_api(#{<<"_body">> := APIList}, Host, _Headers, _Cookies, Req) ->
   Dispatch = cowboy_router:compile([{'_', bifrost_web:get_routes()}]),
   Reply = lists:map(
-            fun(#{<<"method">> := Method, <<"path">> := Path, <<"params">> := Params}) ->
+            fun(#{<<"method">> := Method, <<"path">> := Path
+                 ,<<"params">> := Params, <<"id">> := Id}) ->
                 case catch cowboy_router:execute(#{host => Host, path => Path}
                                                 ,#{dispatch => Dispatch}) of
                   {"EXIT", _Reason} ->
@@ -106,20 +107,20 @@ handle_api(#{<<"_body">> := APIList}, Host, _Headers, _Cookies, Req) ->
                         lager:info("Invoking ~p with ~p", [{Module, Function}, ParamsU]),
                         case apply(Module, Function, [ParamsU]) of
 
-                          ok -> #{status_code => 204};
-                          {ok, Reply} -> #{status_code => 200, reply => Reply};
-                          {ok, Reply, _} -> #{status_code => 200, reply => Reply};
-                          {ok, Reply, _, _} -> #{status_code => 200, reply => Reply};
-                          error -> #{status_code => 400};
-                          {error, {Key, Value}} -> #{status_code => 400, reply => #{Key => Value}};
-                          {error, Reason} when is_map(Reason) -> #{status_code => 400, reply => Reason};
-                          {error, Reason} -> #{status_code => 400, reply => Reason};
-                          {Code, Reply, _} -> #{status_code => Code, reply => Reply};
-                          {Code, Reply, _, _} -> #{status_code => Code, reply => Reply};
-                          Code when is_integer(Code) -> #{status_code => Code};
+                          ok -> #{id => Id, status_code => 204};
+                          {ok, Reply} -> #{id => Id, status_code => 200, reply => Reply};
+                          {ok, Reply, _} -> #{id => Id, status_code => 200, reply => Reply};
+                          {ok, Reply, _, _} -> #{id => Id, status_code => 200, reply => Reply};
+                          error -> #{id => Id, status_code => 400};
+                          {error, {Key, Value}} -> #{id => Id, status_code => 400, reply => #{Key => Value}};
+                          {error, Reason} when is_map(Reason) -> #{id => Id, status_code => 400, reply => Reason};
+                          {error, Reason} -> #{id => Id, status_code => 400, reply => Reason};
+                          {Code, Reply, _} -> #{id => Id, status_code => Code, reply => Reply};
+                          {Code, Reply, _, _} -> #{id => Id, status_code => Code, reply => Reply};
+                          Code when is_integer(Code) -> #{id => Id, status_code => Code};
                           Unknown ->
                             lager:error("Unknown response ~p", [Unknown]),
-                            #{status_code => 500}
+                            #{id => Id, status_code => 500}
                         end
                     end
                 end
