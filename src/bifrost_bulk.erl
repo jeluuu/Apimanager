@@ -56,9 +56,6 @@ handle_api(#{method := <<"OPTIONS">>} = Req, _State) ->
 handle_api(Req, _State) ->
   lager:info("Not a post request ~p", [Req]),
   cowboy_req:reply(405, #{}, [], Req),
-  % Dispatch = cowboy_router:compile([{'_', bifrost_web:get_routes()}]),
-  % R = catch cowboy_router:execute(#{host => Host, path => Path}, #{dispatch => Dispatch}),
-  % lager:info("R is ~p", [R]),
   ok.
 
 authenticate(#{method := <<"OPTIONS">>}) -> {ok, #{}};
@@ -87,7 +84,56 @@ invoke_auth_fun({Module, Function}, Req) ->
 invoke_auth_fun(AuthFun, Req) when is_function(AuthFun, 1) ->
   apply(AuthFun, [Req]).
 
+handle_api(#{<<"_body">> := APIList}, Host, _Headers, _Cookies, Req) ->
+  Dispatch = cowboy_router:compile([{'_', bifrost_web:get_routes()}]),
+  Reply = lists:map(
+            fun(#{<<"method">> := Method, <<"path">> := Path, <<"params">> := Params}) ->
+                case catch cowboy_router:execute(#{host => Host, path => Path}
+                                                ,#{dispatch => Dispatch}) of
+                  {"EXIT", _Reason} ->
+                    lager:error("API ~p couldn't be found", [{Method, Path}]),
+                    #{status_code => 404};
+                  {ok, #{bindings := Bindings}, #{handler_opts := #{functions := Functions}}} ->
+                    lager:info("API bindings are ~p and functions are ~p"
+                              ,[Bindings, Functions]),
+                    ParamsU = maps:merge(Params, try_atomify_keys(Bindings)),
+                    MethodAtom = binary_to_atom(string:lowercase(Method), latin1),
+                    case maps:find(MethodAtom, Functions) of
+                      error ->
+                        lager:error("Method ~p couldn't be found", [Method]),
+                        #{status_code => 405};
+                      {ok, {Module, Function}} ->
+                        lager:info("Invoking ~p with ~p", [{Module, Function}, ParamsU]),
+                        case apply(Module, Function, [ParamsU]) of
+
+                          ok -> #{status_code => 204};
+                          {ok, Reply} -> #{status_code => 200, reply => Reply};
+                          {ok, Reply, _} -> #{status_code => 200, reply => Reply};
+                          {ok, Reply, _, _} -> #{status_code => 200, reply => Reply};
+                          error -> #{status_code => 400};
+                          {error, {Key, Value}} -> #{status_code => 400, reply => #{Key => Value}};
+                          {error, Reason} when is_map(Reason) -> #{status_code => 400, reply => Reason};
+                          {error, Reason} -> #{status_code => 400, reply => Reason};
+                          {Code, Reply, _} -> #{status_code => Code, reply => Reply};
+                          {Code, Reply, _, _} -> #{status_code => Code, reply => Reply};
+                          Code when is_integer(Code) -> #{status_code => Code};
+                          Unknown ->
+                            lager:error("Unknown response ~p", [Unknown]),
+                            #{status_code => 500}
+                        end
+                    end
+                end
+            end,
+            APIList
+           ),
+  ReplyJson = json_encode(Reply),
+  cowboy_req:reply(200, #{<<"content-type">> => <<"application/json">>}
+                   ,ReplyJson, Req);
 handle_api(ReqParams, Host, Headers, Cookies, Req) ->
+  lager:error("API list badly configured ~p"
+             ,[{ReqParams, Host, Headers, Cookies, Req}]),
+  cowboy_req:reply(400, #{}, [], Req).
+
 
 json_decode(JsonObject) ->
   try_atomify_keys(
