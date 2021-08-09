@@ -52,6 +52,11 @@ init([]) ->
            ,#{path => "/logout"
              ,functions => #{post => {?MODULE, logout}}
              ,auth_fun => {?MODULE, auth}}
+           ,#{path => "/samplenoauth/[:name]"
+             ,functions => #{get => {?MODULE, get}
+                            ,post => {?MODULE, put}
+                            ,delete => {?MODULE, delete}}
+             ,auth => false}
            ,#{path => "/sample/[:name]"
              ,functions => #{get => {?MODULE, get}
                             ,post => {?MODULE, put}

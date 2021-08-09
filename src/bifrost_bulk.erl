@@ -97,7 +97,7 @@ handle_api(#{<<"_body">> := APIList}, Host, _Headers, _Cookies, Req) ->
                   {ok, #{bindings := Bindings}, #{handler_opts := #{functions := Functions}}} ->
                     lager:info("API bindings are ~p and functions are ~p"
                               ,[Bindings, Functions]),
-                    ParamsU = maps:merge(Params, try_atomify_keys(Bindings)),
+                    ParamsU = try_atomify_keys(maps:merge(Params, Bindings)),
                     MethodAtom = binary_to_atom(string:lowercase(Method), latin1),
                     case maps:find(MethodAtom, Functions) of
                       error ->
@@ -123,7 +123,10 @@ handle_api(#{<<"_body">> := APIList}, Host, _Headers, _Cookies, Req) ->
                             #{id => Id, status_code => 500}
                         end
                     end
-                end
+                end;
+               (InvalidReq) ->
+                lager:error("Invalid request ~p", [InvalidReq]),
+                #{status_code => 400}
             end,
             APIList
            ),
@@ -137,9 +140,7 @@ handle_api(ReqParams, Host, Headers, Cookies, Req) ->
 
 
 json_decode(JsonObject) ->
-  try_atomify_keys(
-    jiffy:decode(JsonObject, [return_maps, {null_term, undefined}, dedupe_keys])
-   ).
+  jiffy:decode(JsonObject, [return_maps, {null_term, undefined}, dedupe_keys]).
 
 try_atomify_keys(Map) ->
   maps:fold(
