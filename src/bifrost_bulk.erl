@@ -29,7 +29,7 @@ handle_api(#{method := <<"POST">>, host := Host, headers := Headers} = Req, Stat
     {ok, IdentitiesMap} ->
       Bindings = cowboy_req:bindings(Req),
       QueryStringMap = maps:from_list( cowboy_req:parse_qs(Req) ),
-      ParamsAll = maps:merge(maps:merge(QueryStringMap, Bindings), IdentitiesMap),
+      ParamsAll = maps:merge(QueryStringMap, Bindings),
       {ReqParams, Req1} = case maps:get(has_body, Req) of
                             false ->
                               { ParamsAll, Req };
@@ -48,7 +48,7 @@ handle_api(#{method := <<"POST">>, host := Host, headers := Headers} = Req, Stat
                               end
                           end,
       ReqParamsAtomized = try_atomify_keys(ReqParams),
-      handle_api(ReqParamsAtomized, Host, Headers, Cookies, Req1)
+      handle_api(ReqParamsAtomized, IdentitiesMap, Host, Headers, Cookies, Req1)
   end;
 handle_api(#{headers := Headers, method := <<"OPTIONS">>} = Req, _State) ->
   lager:info("OPTIONS request ~p", [Req]),
@@ -94,7 +94,7 @@ invoke_auth_fun({Module, Function}, Req) ->
 invoke_auth_fun(AuthFun, Req) when is_function(AuthFun, 1) ->
   apply(AuthFun, [Req]).
 
-handle_api(#{<<"_body">> := APIList}, Host, _Headers, _Cookies, Req) ->
+handle_api(#{<<"_body">> := APIList}, IdentitiesMap, Host, _Headers, _Cookies, Req) ->
   Dispatch = cowboy_router:compile([{'_', bifrost_web:get_routes()}]),
   Reply = lists:map(
             fun(#{<<"method">> := Method, <<"path">> := Path
@@ -107,7 +107,8 @@ handle_api(#{<<"_body">> := APIList}, Host, _Headers, _Cookies, Req) ->
                   {ok, #{bindings := Bindings}, #{handler_opts := #{functions := Functions}}} ->
                     lager:info("API bindings are ~p and functions are ~p"
                               ,[Bindings, Functions]),
-                    ParamsU = try_atomify_keys(maps:merge(Params, Bindings)),
+                    ParamsU = try_atomify_keys(maps:merge(Params
+                                                         ,maps:merge(Bindings, IdentitiesMap))),
                     MethodAtom = binary_to_atom(string:lowercase(Method), latin1),
                     case maps:find(MethodAtom, Functions) of
                       error ->
@@ -115,7 +116,7 @@ handle_api(#{<<"_body">> := APIList}, Host, _Headers, _Cookies, Req) ->
                         #{status_code => 405};
                       {ok, {Module, Function}} ->
                         lager:info("Invoking ~p with ~p", [{Module, Function}, ParamsU]),
-                        case apply(Module, Function, [ParamsU]) of
+                        case apply(Module, Function, [#{request => ParamsU}]) of
 
                           ok -> #{id => Id, status_code => 204};
                           {ok, Reply} -> #{id => Id, status_code => 200, reply => Reply};
@@ -143,9 +144,9 @@ handle_api(#{<<"_body">> := APIList}, Host, _Headers, _Cookies, Req) ->
   ReplyJson = json_encode(Reply),
   cowboy_req:reply(200, #{<<"content-type">> => <<"application/json">>}
                    ,ReplyJson, Req);
-handle_api(ReqParams, Host, Headers, Cookies, Req) ->
+handle_api(ReqParams, IdentitiesMap, Host, Headers, Cookies, Req) ->
   lager:error("API list badly configured ~p"
-             ,[{ReqParams, Host, Headers, Cookies, Req}]),
+             ,[{ReqParams, IdentitiesMap, Host, Headers, Cookies, Req}]),
   cowboy_req:reply(400, #{}, [], Req).
 
 
