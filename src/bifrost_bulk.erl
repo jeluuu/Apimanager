@@ -91,7 +91,7 @@ handle_api(#{<<"_body">> := APIList}, Host, _Headers, _Cookies, Req) ->
                  ,<<"params">> := Params, <<"id">> := Id}) ->
                 case catch cowboy_router:execute(#{host => Host, path => Path}
                                                 ,#{dispatch => Dispatch}) of
-                  {"EXIT", _Reason} ->
+                  {'EXIT', _Reason} ->
                     lager:error("API ~p couldn't be found", [{Method, Path}]),
                     #{status_code => 404};
                   {ok, #{bindings := Bindings}, #{handler_opts := #{functions := Functions}}} ->
