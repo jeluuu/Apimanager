@@ -50,8 +50,18 @@ handle_api(#{method := <<"POST">>, host := Host, headers := Headers} = Req, Stat
       ReqParamsAtomized = try_atomify_keys(ReqParams),
       handle_api(ReqParamsAtomized, Host, Headers, Cookies, Req1)
   end;
-handle_api(#{method := <<"OPTIONS">>} = Req, _State) ->
+handle_api(#{headers := Headers, method := <<"OPTIONS">>} = Req, _State) ->
   lager:info("OPTIONS request ~p", [Req]),
+  CorsHeaders = maps:get(<<"access-control-request-headers">>, Headers, <<"*">>),
+  CorsMethod = maps:get(<<"access-control-request-method">>, Headers, <<"GET">>),
+  ReplyHeaders =  #{<<"content-type">> => <<"application/json;charset=utf-8">>,
+                    % <<"Access-Control-Allow-Origin">> => Origin,
+                    <<"Access-Control-Allow-Headers">> => CorsHeaders,
+                    <<"Access-Control-Allow-Methods">> => <<CorsMethod/binary, ",OPTIONS">>,
+                    <<"Access-Control-Max-Age">> => <<"1728000">>},
+                    % <<"Access-Control-Allow-Credentials">> => "true"},
+  lager:info("Sending CORS headers ~p", [ReplyHeaders]),
+  cowboy_req:reply(204, ReplyHeaders, [], Req),
   ok;
 handle_api(Req, _State) ->
   lager:info("Not a post request ~p", [Req]),
