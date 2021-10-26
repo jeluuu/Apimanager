@@ -12,7 +12,7 @@ execute(#{headers := Headers} = Req, Env) ->
       CorsHeaders = maps:get(<<"access-control-request-headers">>, Headers, <<"*">>),
       % CorsMethod = maps:get(<<"access-control-request-method">>, Headers, <<"GET">>),
       ReplyHeaders =  #{
-        <<"content-type">> => <<"application/json;charset=utf-8">>,
+        % <<"content-type">> => <<"application/json;charset=utf-8">>,
         <<"Access-Control-Allow-Origin">> => Origin,
         <<"Access-Control-Allow-Headers">> => CorsHeaders,
         <<"Access-Control-Allow-Methods">> => <<"GET,POST,PUT,DELETE,OPTIONS">>,
